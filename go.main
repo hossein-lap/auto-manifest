@@ -77,18 +77,23 @@ type model struct {
 var docStyle = lipgloss.NewStyle().Margin(1, 2)
 
 func newModel(manifest Manifest) model {
+	m := model{manifest: manifest}
+	m.refreshList()
+	return m
+}
+
+func (m *model) refreshList() {
 	items := []list.Item{
-		entry{EntryDefault, "default", fmt.Sprintf("sync-j: %s, revision: %s", manifest.Default.SyncJ, manifest.Default.Revision), 0},
+		entry{EntryDefault, "default", fmt.Sprintf("sync-j: %s, revision: %s", m.manifest.Default.SyncJ, m.manifest.Default.Revision), 0},
 	}
-	for i, r := range manifest.Remotes {
+	for i, r := range m.manifest.Remotes {
 		items = append(items, entry{EntryRemote, fmt.Sprintf("remote: %s", r.Name), fmt.Sprintf("fetch: %s, revision: %s", r.Fetch, r.Revision), i})
 	}
-	for i, p := range manifest.Projects {
+	for i, p := range m.manifest.Projects {
 		items = append(items, entry{EntryProject, fmt.Sprintf("project: %s", p.Name), fmt.Sprintf("path: %s, remote: %s", p.Path, p.Remote), i})
 	}
-	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
-	l.Title = "Edit XML Entries"
-	return model{manifest: manifest, list: l}
+	m.list = list.New(items, list.NewDefaultDelegate(), 0, 0)
+	m.list.Title = "Edit XML Entries"
 }
 
 func (m model) Init() tea.Cmd {
@@ -101,29 +106,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width-4, msg.Height-6)
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q":
-            if m.editing {
-                tea.ExitAltScreen()
-                m.editing = false
-                return m, nil
-            } else {
-                return m, tea.Quit
-            }
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			return m, tea.Quit
-		case "shift+tab", "up":
-            if m.editing {
-                m.cursor = (m.cursor - 1 + len(m.inputs)) % len(m.inputs)
-                for i := range m.inputs {
-                    if i == m.cursor {
-                        m.inputs[i].Focus()
-                    } else {
-                        m.inputs[i].Blur()
-                    }
-                }
-                return m, nil
-            }
-		case "tab", "down":
+		case "tab":
 			if m.editing {
 				m.cursor = (m.cursor + 1) % len(m.inputs)
 				for i := range m.inputs {
@@ -135,21 +120,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-		case "ctrl+s":
+		case "shift+tab":
 			if m.editing {
-				return m.saveEdit()
-			}
-		case "ctrl+z":
-			if m.editing {
-                sel := m.list.SelectedItem().(entry)
-                return m.initEdit(sel)
+				m.cursor = (m.cursor - 1 + len(m.inputs)) % len(m.inputs)
+				for i := range m.inputs {
+					if i == m.cursor {
+						m.inputs[i].Focus()
+					} else {
+						m.inputs[i].Blur()
+					}
+				}
+				return m, nil
 			}
 		case "enter":
 			if m.editing {
-	 			return m, m.Init()
-	 		}
-			if m.editing {
-				return m.saveEdit()
+				newModel, cmd := m.saveEdit()
+				return newModel, cmd
 			}
 			sel := m.list.SelectedItem().(entry)
 			return m.initEdit(sel)
@@ -201,12 +187,6 @@ func (m model) initEdit(sel entry) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// func (m model) closeAltScreen() (tea.Model, tea.Cmd) {
-//     m.editing = false
-//     tea.ExitAltScreen()
-// 	return m, nil
-// }
-
 func (m model) saveEdit() (tea.Model, tea.Cmd) {
 	vals := make(map[string]string)
 	for i, lbl := range m.labels {
@@ -248,38 +228,12 @@ func (m model) writeToFile() (tea.Model, tea.Cmd) {
 	err = os.WriteFile("default.xml", out, 0644)
 	if err != nil {
 		m.errorMsg = fmt.Sprintf("Failed to write XML: %v", err)
-		return m, nil
+	} else {
+		m.errorMsg = "Saved successfully!"
+		m.refreshList() // <-- refresh list with new data
 	}
-
-	// Reload file
-	data, err := os.ReadFile("default.xml")
-	if err != nil {
-		m.errorMsg = fmt.Sprintf("Failed to reload default.xml: %v", err)
-		return m, nil
-	}
-	var newManifest Manifest
-	if err := xml.Unmarshal(data, &newManifest); err != nil {
-		m.errorMsg = fmt.Sprintf("Failed to parse updated XML: %v", err)
-		return m, nil
-	}
-
-	// Rebuild list
-	items := []list.Item{
-		entry{EntryDefault, "default", fmt.Sprintf("sync-j: %s, revision: %s", newManifest.Default.SyncJ, newManifest.Default.Revision), 0},
-	}
-	for i, r := range newManifest.Remotes {
-		items = append(items, entry{EntryRemote, fmt.Sprintf("remote: %s", r.Name), fmt.Sprintf("fetch: %s, revision: %s", r.Fetch, r.Revision), i})
-	}
-	for i, p := range newManifest.Projects {
-		items = append(items, entry{EntryProject, fmt.Sprintf("project: %s", p.Name), fmt.Sprintf("path: %s, remote: %s", p.Path, p.Remote), i})
-	}
-	m.manifest = newManifest
-	m.list.SetItems(items)
-	m.errorMsg = "Saved successfully and reloaded."
-
 	return m, nil
 }
-
 
 func (m model) View() string {
 	if m.editing {
@@ -310,4 +264,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
