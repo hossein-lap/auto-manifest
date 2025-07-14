@@ -34,12 +34,13 @@ type Remote struct {
 }
 
 type Project struct {
-    Path     string `xml:"path,attr"`
-    Name     string `xml:"name,attr"`
-    Remote   string `xml:"remote,attr"`
-    Revision string `xml:"revision,attr"`
-    Upstream string `xml:"upstream,attr"`
-    Groups   string `xml:"groups,attr"`
+    Path       string `xml:"path,attr"`
+    Name       string `xml:"name,attr"`
+    Remote     string `xml:"remote,attr"`
+    Revision   string `xml:"revision,attr"`
+    Upstream   string `xml:"upstream,attr"`
+    Groups     string `xml:"groups,attr"`
+    DestBranch string `xml:"dest-branch,attr"`
 }
 
 type EntryType int
@@ -88,7 +89,9 @@ func newModel(manifest Manifest) model {
     for i, p := range manifest.Projects {
         items = append(items, entry{EntryProject, fmt.Sprintf("project: %s", p.Name), fmt.Sprintf("path: %s, remote: %s", p.Path, p.Remote), i})
     }
+
     l := list.New(items, list.NewDefaultDelegate(), 0, 0)
+	l.Styles.Title = titleStyle
     l.Title = fmt.Sprintf("Edit %s file", manifestFile)
     return model{manifest: manifest, list: l}
 }
@@ -106,20 +109,40 @@ var (
     // blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
     // focusedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-    blurredStyle = lipgloss.
-                   NewStyle().
-                   Foreground(lipgloss.Color("7"))
-                   // Background(lipgloss.Color("0"))
-    focusedStyle = lipgloss.
-                   NewStyle().
-                   Underline(false).
-                   Bold(true).
-                   Background(lipgloss.Color("0"))
-                   // Foreground(lipgloss.Color("15")).
-    noStyle      = lipgloss.NewStyle().
-                   Background(lipgloss.Color("0")).
-                   Foreground(lipgloss.Color("15")).
-                   Blink(false)
+    // titleMainStyle = lipgloss.NewStyle().
+    //                  Foreground(lipgloss.Color("#FFFDF5")).
+    //                  Background(lipgloss.Color("#25A065")).
+    //                  Padding(0, 1)
+
+    titleStyle     = lipgloss.
+                     NewStyle().
+                     Bold(false).
+                     Foreground(lipgloss.Color("15")).
+                     Background(lipgloss.Color("4")).
+                     Padding(0, 1)
+
+    menuStyle      = lipgloss.
+                     NewStyle().
+                     Bold(false).
+                     Foreground(lipgloss.Color("7"))
+                     // Background(lipgloss.Color("0"))
+
+    blurredStyle   = lipgloss.
+                     NewStyle().
+                     Foreground(lipgloss.Color("8"))
+                     // Background(lipgloss.Color("0"))
+
+    focusedStyle   = lipgloss.
+                     NewStyle().
+                     Underline(false).
+                     Bold(false).
+                     // Background(lipgloss.Color("0")).
+                     Foreground(lipgloss.Color("13"))
+
+    noStyle        = lipgloss.NewStyle().
+                     Background(lipgloss.Color("0")).
+                     Foreground(lipgloss.Color("15")).
+                     Blink(false)
 
     // cursorStyle         = focusedStyle
     // helpStyle           = blurredStyle
@@ -146,6 +169,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             }
         case "ctrl+c":
             return m, tea.Quit
+        case "ctrl+k":
+            if m.editing {
+                m.cursor = (m.cursor - 1 + len(m.inputs)) % len(m.inputs)
+                for i := range m.inputs {
+                    if i == m.cursor {
+                        m.inputs[i].Focus()
+                        m.inputs[i].PromptStyle = focusedStyle
+                        m.inputs[i].TextStyle = focusedStyle
+                        m.inputs[i].Cursor.Style = noStyle
+                    } else {
+                        m.inputs[i].Blur()
+                        m.inputs[i].PromptStyle = blurredStyle
+                        m.inputs[i].TextStyle = blurredStyle
+                        m.inputs[i].Cursor.Style = noStyle
+                    }
+                }
+                return m, nil
+			}
+        case "ctrl+j":
+            if m.editing {
+                m.cursor = (m.cursor + 1) % len(m.inputs)
+                for i := range m.inputs {
+                    if i == m.cursor {
+                        m.inputs[i].Focus()
+                        m.inputs[i].PromptStyle = focusedStyle
+                        m.inputs[i].TextStyle = focusedStyle
+                        m.inputs[i].Cursor.Style = noStyle
+                    } else {
+                        m.inputs[i].Blur()
+                        m.inputs[i].PromptStyle = blurredStyle
+                        m.inputs[i].TextStyle = blurredStyle
+                        m.inputs[i].Cursor.Style = noStyle
+                    }
+                }
+                return m, nil
+			}
         case "tab", "down":
             if m.editing {
                 m.cursor = (m.cursor + 1) % len(m.inputs)
@@ -246,8 +305,8 @@ func (m model) initEdit(sel entry) (tea.Model, tea.Cmd) {
             m.inputs = []textinput.Model{makeInput(r.Fetch), makeInput(r.Name), makeInput(r.Revision), makeInput(r.Upstream), makeInput(r.Review)}
         case EntryProject:
             p := m.manifest.Projects[sel.index]
-            m.labels = []string{"path", "name", "remote", "revision", "upstream", "groups"}
-            m.inputs = []textinput.Model{makeInput(p.Path), makeInput(p.Name), makeInput(p.Remote), makeInput(p.Revision), makeInput(p.Upstream), makeInput(p.Groups)}
+            m.labels = []string{"path", "name", "remote", "revision", "upstream", "groups", "dest-branch"}
+            m.inputs = []textinput.Model{makeInput(p.Path), makeInput(p.Name), makeInput(p.Remote), makeInput(p.Revision), makeInput(p.Upstream), makeInput(p.Groups), makeInput(p.DestBranch)}
     }
 
     for _, value := range m.labels {
@@ -295,12 +354,13 @@ func (m model) saveEdit() (tea.Model, tea.Cmd) {
             }
         case EntryProject:
             m.manifest.Projects[m.editIndex] = Project{
-                Path:     vals["path"],
-                Name:     vals["name"],
-                Remote:   vals["remote"],
-                Revision: vals["revision"],
-                Upstream: vals["upstream"],
-                Groups:   vals["groups"],
+                Path:       vals["path"],
+                Name:       vals["name"],
+                Remote:     vals["remote"],
+                Revision:   vals["revision"],
+                Upstream:   vals["upstream"],
+                Groups:     vals["groups"],
+                DestBranch: vals["dest-branch"],
             }
     }
     m.editing = false
@@ -353,16 +413,16 @@ func (m model) writeToFile() (tea.Model, tea.Cmd) {
 func (m model) View() string {
     if m.editing {
         var b strings.Builder
-        b.WriteString("[ Editing ]\n")
-        b.WriteString("-----------\n")
+        b.WriteString(titleStyle.Render("Editing")+"\n")
+        // b.WriteString(menuStyle.Render("-----------")+"\n")
         b.WriteString("\n")
         for i, input := range m.inputs {
             tmpPadWidth := m.labelPad - len(m.labels[i])
-            b.WriteString(fmt.Sprintf("%d. %s %s : %s\n", i+1, m.labels[i], strings.Repeat(" ", tmpPadWidth), input.View()))
+            b.WriteString(menuStyle.Render(fmt.Sprintf("> %s %s :", m.labels[i], strings.Repeat(" ", tmpPadWidth)))+" "+input.View()+"\n")
         }
+        // b.WriteString(menuStyle.Render("-----------")+"\n")
         b.WriteString("\n")
-        b.WriteString("-----------\n")
-        b.WriteString("(q to quit, enter to edit)\n")
+        b.WriteString(blurredStyle.Render("(C-q to quit, type to edit, C-s to save)\n")) // "(C-q to quit, type to edit)\n"
         return docStyle.Render(b.String())
     }
     return docStyle.Render(m.list.View()) + "\n" + m.errorMsg // + "\n(q to quit, enter to edit)"
