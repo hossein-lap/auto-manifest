@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <default sync-j="4" revision="master"/>
+
+  <!-- Remotes -->
+  <remote fetch="ssh://git@gitlab.com/" name="frontend" revision="master" upstream="master" review="http://gerrit.com"/>
+  <remote fetch="ssh://git@gitlab.com/" name="backend"  revision="master" upstream="master" review="http://gerrit.com"/>
+  <remote fetch="ssh://git@gitlab.com/" name="embedded" revision="master" upstream="master" review="http://gerrit.com"/>
+
+  <!-- Projects -->
+  <project path="react-nuxt"     name="front-end-name"   remote="frontend" revision="master" upstream="master" groups="frontend"/>
+  <project path="sql-init"       name="database-repo"    remote="backend"  revision="devel"  upstream="devel"  groups="backend"/>
+  <project path="low-level-comp" name="embedded-src-lib" remote="lib"      revision="hotfix" upstream="hotfix" groups="lib"/>
+</manifest>
